@@ -1,0 +1,7 @@
+beeai
+beeai-framework[wikipedia]
+beeai-framework[a2a]
+asyncio
+python-dotenv
+fastapi
+uvicorn[standard]
