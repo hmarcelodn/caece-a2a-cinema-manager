@@ -1,1 +1,14 @@
 venv
+.venv
+__pycache__
+.env
+.env.local
+.env.*.local
+.DS_Store
+.idea
+.vscode
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+*.log.*.*.*.*
