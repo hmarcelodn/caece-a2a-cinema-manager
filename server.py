@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from agent import create_cinema_agent, lifespan
+from logging_utils import log_agent_steps
 from models import CinemaRequest, AgentResponse
 
 app = FastAPI(title="Cinema Agent Server", lifespan=lifespan)
@@ -20,12 +21,14 @@ app.add_middleware(
 
 @app.post("/recommend", response_model=AgentResponse)
 async def recommend(request: CinemaRequest):
+    print(request.message)
     cinema_agent = create_cinema_agent()
     result = await cinema_agent.run(
-        request.message, 
-        expected_output=AgentResponse
+        request.message,
+        expected_output=AgentResponse,
     )
-    
+    log_agent_steps(result.state)
+
     if result.output_structured is not None:
         return result.output_structured
     return AgentResponse.model_validate_json(result.last_message.text)

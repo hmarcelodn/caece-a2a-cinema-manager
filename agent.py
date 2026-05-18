@@ -1,8 +1,6 @@
-import asyncio
-import json
+import sys
 
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,8 +15,16 @@ from beeai_framework.tools import Tool
 from beeai_framework.tools.handoff import HandoffTool
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
+from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
 
+from logging_utils import is_cinema_debug
 from models import AgentResponse
+
+
+def _build_middlewares():
+    if is_cinema_debug():
+        return [GlobalTrajectoryMiddleware(target=sys.stderr, match_nested=True)]
+    return []
 
 profile_agent_location = "http://localhost:3007"
 scout_agent_location = "http://localhost:3005"
@@ -35,6 +41,7 @@ def create_cinema_agent() -> RequirementAgent:
         name="Cinema Agent",
         description="Asistente personal de viernes a la noche que determina qué película ver, por qué, y dónde",
         llm=ChatModel.from_name("anthropic:claude-sonnet-4-20250514"),
+        middlewares=_build_middlewares(),
         tools=[
             ThinkTool(),
             HandoffTool(
