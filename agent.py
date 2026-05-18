@@ -1,15 +1,13 @@
 import asyncio
 import json
-from contextlib import asynccontextmanager
 
+from contextlib import asynccontextmanager
+from pydantic import BaseModel
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import uvicorn
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from beeai_framework.adapters.a2a.agents import A2AAgent
 from beeai_framework.memory import UnconstrainedMemory
@@ -19,6 +17,8 @@ from beeai_framework.tools import Tool
 from beeai_framework.tools.handoff import HandoffTool
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
+
+from models import AgentResponse
 
 profile_agent_location = "http://localhost:3007"
 scout_agent_location = "http://localhost:3005"
@@ -30,10 +30,9 @@ scout_agent = A2AAgent(url=scout_agent_location, memory=UnconstrainedMemory())
 research_agent = A2AAgent(url=research_agent_location, memory=UnconstrainedMemory())
 weather_agent = A2AAgent(url=weather_agent_location, memory=UnconstrainedMemory())
 
-
-def create_friday_agent() -> RequirementAgent:
+def create_cinema_agent() -> RequirementAgent:
     return RequirementAgent(
-        name="Friday Manager",
+        name="Cinema Agent",
         description="Asistente personal de viernes a la noche que determina qué película ver, por qué, y dónde",
         llm=ChatModel.from_name("anthropic:claude-sonnet-4-20250514"),
         tools=[
@@ -88,109 +87,49 @@ def create_friday_agent() -> RequirementAgent:
         ],
         instructions=(
             f"""
-    Sos el Friday Manager, un asistente personal que ayuda a elegir la película perfecta para un viernes a la noche.
-    Tu objetivo es responder tres preguntas: QUÉ película ver, POR QUÉ esa película, y DÓNDE verla.
-
-    Seguí este flujo de trabajo:
-
-    1. PERFIL: Consultá al {profile_agent.name} para conocer las preferencias del usuario
-       (géneros favoritos, plataformas de streaming, rating mínimo, películas ya vistas).
-
-    2. CLIMA: Consultá al {weather_agent.name} con la ubicación del usuario (Buenos Aires: latitude -34.61667, longitude -58.68333)
-       para saber las condiciones meteorológicas actuales. Esto te da contexto
-       (ej: si llueve, recomendar algo para quedarse en casa; si hace lindo, quizás una película de aventura).
-
-    3. BÚSQUEDA: Con las preferencias del perfil, armá un JSON estructurado y consultá al {scout_agent.name}
-       para obtener candidatos de películas que cumplan los criterios del usuario.
-
-    4. INVESTIGACIÓN: Consultá al {research_agent.name} pasándole en texto libre todo el contexto reunido:
-       clima actual, preferencias, historial de películas vistas, y cualquier detalle relevante.
-       Este agente busca en internet y TMDB para dar recomendaciones profundas y contextuales.
-
-    5. SÍNTESIS: Con toda la información, elegí la mejor película y presentá tu recomendación final con:
-       - QUÉ película ver (título, año, sinopsis breve)
-       - POR QUÉ esa película (basándote en preferencias, clima, contexto del viernes)
-       - DÓNDE verla (plataforma de streaming disponible, o cine si aplica)
-
-    REGLAS:
-    - SIEMPRE consultá al Profile Agent primero. No asumas preferencias.
-    - SIEMPRE consultá al Weather Agent. El clima es contexto importante.
-    - NO recomiendes películas que el usuario ya haya visto (chequeá el historial del perfil).
-    - Respondé siempre en español.
-    - Sé conciso pero informativo en tu recomendación final.
+    Sos Lumus, un asistente personal que ayuda a elegir la película perfecta o ayuda a resolver cualquier consulta sobre peliculas.
+    
+    Tus objetivos son:
+    - Responder tres preguntas: QUÉ película ver, POR QUÉ esa película, y DÓNDE verla.
+    - Responder en que plataformas está disponible una película específica.
+    - Responder cualquier información sobre una película específica.
+    
+    Cuando recomiendes una película obtener todo el contexto necesario para responder la pregunta.
+    El contexto necesario para recomendar una película es:    
+    - Clima/tiempo: "está lloviendo", "hace mucho calor", "día nublado"
+    - Día/momento: "es viernes a la noche", "domingo de tarde", "feriado"
+    - Estado de ánimo: "estoy aburrido", "quiero algo liviano", "tengo ganas de llorar"
+    - Preferencias: géneros favoritos, actores, directores, épocas
+    - Historial: películas que ya vio (para evitar repetir y encontrar patrones)
+    - Compañía: "voy a ver con mi pareja", "noche con amigos", "para ver con los chicos"
+    - Plataformas de streaming: "netflix", "amazon prime", "disney+", etc.
+    - Idiomas: "español", "inglés", etc.
+    - Horario: "de 10:00 a 12:00", "de 12:00 a 14:00", etc.
+    
+    Las siguientes herramientas estan disponibles para obtener el contexto necesario:
+    - Consulta {weather_agent.name} para obtener el clima.
+    - Consulta {scout_agent.name} para buscar películas candidatas.
+    - Consulta {research_agent.name} para investigar y recomendar películas.
+    - Consulta {profile_agent.name} para obtener el perfil del usuario.
+    
+    Retorna SOLO JSON válido con el schema de respuesta esperado:
+    {AgentResponse.model_json_schema()}
     """
-        ),
+        )
     )
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await profile_agent.check_agent_exists()
     print("Profile agent exists")
+    
     await scout_agent.check_agent_exists()
     print("Scout agent exists")
+    
     await research_agent.check_agent_exists()
     print("Movies Research agent exists")
+    
     await weather_agent.check_agent_exists()
     print("Weather agent exists")
+    
     yield
-
-
-app = FastAPI(title="Friday Cinema Manager", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class RecommendRequest(BaseModel):
-    message: str
-
-
-def serialize_event(data, event_meta) -> str | None:
-    event_name = event_meta.name
-    path = event_meta.path
-
-    if event_name == "start":
-        return json.dumps({"step": "start", "path": path})
-    elif event_name == "final_answer":
-        delta = getattr(data, "delta", None)
-        output = getattr(data, "output", None)
-        return json.dumps({"step": "final_answer", "delta": delta or "", "output": output or ""})
-    elif event_name == "success":
-        return json.dumps({"step": "success", "path": path})
-    else:
-        tool_name = None
-        if hasattr(data, "tool") and hasattr(data.tool, "name"):
-            tool_name = data.tool.name
-        elif hasattr(data, "state") and hasattr(data.state, "tool") and data.state.tool:
-            tool_name = getattr(data.state.tool, "name", None)
-        return json.dumps({"step": event_name, "path": path, "tool": tool_name})
-
-
-@app.post("/recommend")
-async def recommend(request: RecommendRequest):
-    friday_agent = create_friday_agent()
-
-    async def event_stream():
-        run = friday_agent.run(request.message)
-        async for data, event_meta in run:
-            payload = serialize_event(data, event_meta)
-            if payload:
-                yield f"event: {event_meta.name}\ndata: {payload}\n\n"
-        yield "event: done\ndata: {}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=3004)
