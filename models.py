@@ -18,3 +18,6 @@ class AgentResponse(BaseModel):
 
 class CinemaRequest(BaseModel):
     message: str
+
+class OnboardingRequest(BaseModel):
+    message: str

@@ -9,6 +9,14 @@ def is_cinema_debug() -> bool:
     return os.getenv("CINEMA_DEBUG", "").lower() in ("1", "true", "yes")
 
 
+def build_middlewares():
+    if is_cinema_debug():
+        from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
+
+        return [GlobalTrajectoryMiddleware(target=sys.stderr, match_nested=True)]
+    return []
+
+
 def _truncate(text: str, max_len: int = 200) -> str:
     text = text.replace("\n", " ").strip()
     if len(text) <= max_len:

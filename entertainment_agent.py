@@ -15,16 +15,8 @@ from beeai_framework.tools import Tool
 from beeai_framework.tools.handoff import HandoffTool
 from beeai_framework.tools.think import ThinkTool
 from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
-from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
-
-from logging_utils import is_cinema_debug
+from logging_utils import build_middlewares
 from models import AgentResponse
-
-
-def _build_middlewares():
-    if is_cinema_debug():
-        return [GlobalTrajectoryMiddleware(target=sys.stderr, match_nested=True)]
-    return []
 
 profile_agent_location = "http://localhost:3007"
 scout_agent_location = "http://localhost:3005"
@@ -36,12 +28,12 @@ scout_agent = A2AAgent(url=scout_agent_location, memory=UnconstrainedMemory())
 research_agent = A2AAgent(url=research_agent_location, memory=UnconstrainedMemory())
 weather_agent = A2AAgent(url=weather_agent_location, memory=UnconstrainedMemory())
 
-def create_cinema_agent() -> RequirementAgent:
+def create_entertainment_agent() -> RequirementAgent:
     return RequirementAgent(
         name="Cinema Agent",
         description="Asistente personal de viernes a la noche que determina qué película ver, por qué, y dónde",
         llm=ChatModel.from_name("anthropic:claude-sonnet-4-20250514"),
-        middlewares=_build_middlewares(),
+        middlewares=build_middlewares(),
         tools=[
             ThinkTool(),
             HandoffTool(
